@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Чёрная Дыра: Бескрайний Космос</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="menu">
+    <div id="title">ЧЁРНАЯ ДЫРА</div>
+    <button id="startBtn" class="btn">Играть</button>
+    <button id="infoBtn" class="btn">Инфо</button>
+    <button id="langBtn" class="btn">🇷🇺/🇬🇧</button>
+  </div>
+
+  <div id="infoPanel">
+    <h2 id="infoTitle">Информация об игре</h2>
+    <p id="infoDesc">Вы — чёрная дыра в бескрайнем космосе. Поглощайте астероиды, планеты, звёзды и даже другие чёрные дыры, чтобы расти и становиться сильнее.</p>
+    <p id="infoGoal"><em>Великая цель — поглотить галактику.</em></p>
+    <p id="infoControls"><strong>Управление:</strong><br>• Нижняя часть экрана — движение (вперёд/назад, влево/вправо)<br>• Верхняя часть экрана — поворот взгляда (камера)<br>• Космос бесконечен — исследуйте его!</p>
+    <button id="closeInfo" class="btn">Закрыть</button>
+  </div>
+
+  <div id="ui">
+    <div><span id="scoreLabel">Очки:</span> <span id="score">0</span></div>
+    <div><span id="sizeLabel">Размер:</span> <span id="size">3.0</span></div>
+    <div><span id="universeLabel">Вселенная:</span> <span id="universe">72000³</span></div>
+  </div>
+
+  <div id="coordinates">X: 0  Y: 0  Z: 0</div>
+
+  <div id="joystick"><div id="joystick-inner"></div></div>
+  <div id="lookJoystick"><div id="lookJoystick-inner"></div></div>
+
+  <div id="gameOver">
+    <h2 id="gameOverText">Вас поглотила другая дыра...</h2>
+    <div><span id="finalScoreLabel">Очки:</span> <span id="finalScore">0</span></div>
+    <button id="restartBtn" class="btn">Заново</button>
+    <button id="menuBtn" class="btn">В меню</button>
+  </div>
+
+  <!-- Библиотеки -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
+  <script src="lib/howler.min.js"></script>
+
+  <!-- Конфигурация и инициализация -->
+  <script type="module" src="js/config.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
