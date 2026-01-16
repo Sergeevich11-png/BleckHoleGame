@@ -51,6 +51,8 @@ body, html { margin:0; padding:0; overflow:hidden; width:100%; height:100%; back
 let gameInitialized = false;
 let currentGameState = null;
 
+const DRYING_COLORS = [0x8B4513, 0xA16B3F, 0xB8855A, 0xff9800];
+
 const mainMenu = document.getElementById('mainMenu');
 const continueBtn = document.getElementById('continueBtn');
 const playBtn = document.getElementById('playBtn');
@@ -81,6 +83,7 @@ function saveGameState(scene, camera, spotLight, bulb, interactiveCube, watering
 			position: interactiveCube.position.clone(),
 			visible: interactiveCube.visible,
 			wet: interactiveCube.userData.wet,
+			dryStage: interactiveCube.userData.dryStage,
 			color: interactiveCube.material.color.getHex()
 		},
 		wateringCan: {
@@ -93,15 +96,16 @@ function saveGameState(scene, camera, spotLight, bulb, interactiveCube, watering
 	};
 }
 
-function loadGameState(gameState, scene, camera, spotLight, bulb, interactiveCube, wateringCan) {
-	camera.position.copy(gameState.cameraPosition);
+function loadGameState(gameState, scene, camera, spotLight, bulb, interactiveCube, wateringCan) {	camera.position.copy(gameState.cameraPosition);
 	camera.rotation.set(gameState.cameraRotation.x, gameState.cameraRotation.y, gameState.cameraRotation.z);
-	spotLight.intensity = gameState.isLampOn ? 9.5 : 0;	spotLight.color.setHex(gameState.spotLightColor);
+	spotLight.intensity = gameState.isLampOn ? 9.5 : 0;
+	spotLight.color.setHex(gameState.spotLightColor);
 	bulb.material.color.setHex(gameState.bulbColor);
 
 	interactiveCube.position.copy(gameState.interactiveCube.position);
 	interactiveCube.visible = gameState.interactiveCube.visible;
 	interactiveCube.userData.wet = gameState.interactiveCube.wet;
+	interactiveCube.userData.dryStage = gameState.interactiveCube.dryStage || 3;
 	interactiveCube.material.color.setHex(gameState.interactiveCube.color);
 
 	wateringCan.position.copy(gameState.wateringCan.position);
@@ -110,14 +114,38 @@ function loadGameState(gameState, scene, camera, spotLight, bulb, interactiveCub
 	cubeUI.style.display = gameState.cubeUIVisible ? 'block' : 'none';
 	wateringCanUI.style.display = gameState.wateringCanUIVisible ? 'block' : 'none';
 
+	if (interactiveCube.userData.wet && interactiveCube.userData.dryStage < 3) {
+		const stage = interactiveCube.userData.dryStage;
+		setTimeout(() => {
+			let current = stage + 1;
+			const advance = () => {
+				if (current >= DRYING_COLORS.length) {
+					interactiveCube.userData.wet = false;
+					interactiveCube.userData.dryStage = 3;
+					return;
+				}
+				interactiveCube.userData.dryStage = current;
+				interactiveCube.material.color.set(DRYING_COLORS[current]);
+				if (current < DRYING_COLORS.length - 1) {
+					interactiveCube.userData.dryTimer = setTimeout(() => {
+						current++;
+						advance();
+					}, 10000);
+				} else {
+					interactiveCube.userData.wet = false;
+				}
+			};
+			advance();
+		}, 100);
+	}
+
 	return gameState.heldObject === 'cube' ? interactiveCube : (gameState.heldObject === 'can' ? wateringCan : null);
 }
 
 function initGame(loadState = null) {
 	if (gameInitialized) return;
 
-	const WORLD_SIZE_X = 50;
-	const WORLD_SIZE_Y = 25;
+	const WORLD_SIZE_X = 50;	const WORLD_SIZE_Y = 25;
 	const WORLD_SIZE_Z = 50;
 	const PLAYER_HEIGHT = 3.2;
 	const START_POS = { x: -20, y: PLAYER_HEIGHT, z: 20 };
@@ -138,14 +166,16 @@ function initGame(loadState = null) {
 	}
 	const renderer = new THREE.WebGLRenderer({ antialias: true });
 	renderer.setSize(window.innerWidth, window.innerHeight);
-	renderer.domElement.style.touchAction = 'none'; // важно для Android
+	renderer.domElement.style.touchAction = 'none';
 	document.body.appendChild(renderer.domElement);
 
 	const ambientLight = new THREE.AmbientLight(0xffffff, 0.05);
 	scene.add(ambientLight);
 
 	const spotLight = new THREE.SpotLight(0xfff0b3, loadState && !loadState.isLampOn ? 0 : 9.5);
-	spotLight.position.set(0, WORLD_SIZE_Y, 0);	spotLight.angle = Math.atan(28.6 / WORLD_SIZE_Y);	spotLight.penumbra = 0.3;
+	spotLight.position.set(0, WORLD_SIZE_Y, 0);
+	spotLight.angle = Math.atan(28.6 / WORLD_SIZE_Y);
+	spotLight.penumbra = 0.3;
 	spotLight.decay = 1;
 	spotLight.distance = 60;
 	if (loadState) {
@@ -164,8 +194,7 @@ function initGame(loadState = null) {
 		const canvas = document.createElement('canvas');
 		canvas.width = size; canvas.height = size;
 		const ctx = canvas.getContext('2d');
-		ctx.fillStyle = '#C8C8C8';
-		ctx.fillRect(0, 0, size, size);
+		ctx.fillStyle = '#C8C8C8';		ctx.fillRect(0, 0, size, size);
 		const data = ctx.getImageData(0, 0, size, size).data;
 		for (let i = 0; i < data.length; i += 4) {
 			let noise = (Math.random() - 0.5) * 15;
@@ -194,7 +223,8 @@ function initGame(loadState = null) {
 		const geo = new THREE.BoxGeometry(...w.size);
 		const mat = idx < 4
 			? new THREE.MeshStandardMaterial({ color: wallColor, map: concreteTexture, roughness: 0.95, metalness: 0, side: THREE.BackSide })
-			: new THREE.MeshStandardMaterial({ color: w.color, roughness: 0.9, metalness: 0, side: THREE.BackSide });		const mesh = new THREE.Mesh(geo, mat);
+			: new THREE.MeshStandardMaterial({ color: w.color, roughness: 0.9, metalness: 0, side: THREE.BackSide });
+		const mesh = new THREE.Mesh(geo, mat);
 		mesh.position.set(...w.pos);
 		scene.add(mesh);
 	});
@@ -213,7 +243,6 @@ function initGame(loadState = null) {
 			scene.add(tile);
 		}
 	}
-
 	const bulb = new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffffcc }));
 	bulb.position.set(0, WORLD_SIZE_Y, 0);
 	if (loadState) bulb.material.color.setHex(loadState.bulbColor);
@@ -225,10 +254,12 @@ function initGame(loadState = null) {
 		interactiveCube.position.copy(loadState.interactiveCube.position);
 		interactiveCube.visible = loadState.interactiveCube.visible;
 		interactiveCube.userData.wet = loadState.interactiveCube.wet;
+		interactiveCube.userData.dryStage = loadState.interactiveCube.dryStage || 3;
 		interactiveCube.material.color.setHex(loadState.interactiveCube.color);
 	} else {
 		interactiveCube.position.set(0, cubeSize/2, 0);
 		interactiveCube.userData.wet = false;
+		interactiveCube.userData.dryStage = 3;
 	}
 	scene.add(interactiveCube);
 
@@ -242,8 +273,10 @@ function initGame(loadState = null) {
 	scene.add(wateringCan);
 
 	const plateMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0x333300, side: THREE.DoubleSide });
-	const switchPlate = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.25), plateMat);	switchPlate.position.set(0, PLAYER_HEIGHT, -WORLD_SIZE_Z/2 + 0.51);
-	switchPlate.rotation.y = Math.PI;	scene.add(switchPlate);
+	const switchPlate = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.25), plateMat);
+	switchPlate.position.set(0, PLAYER_HEIGHT, -WORLD_SIZE_Z/2 + 0.51);
+	switchPlate.rotation.y = Math.PI;
+	scene.add(switchPlate);
 
 	const colorTile = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 1), plateMat);
 	colorTile.position.set(0, PLAYER_HEIGHT, WORLD_SIZE_Z/2 - 0.51);
@@ -259,8 +292,7 @@ function initGame(loadState = null) {
 	let isColorPickerOpen = false;
 
 	function buildColorPickerUI() {
-		colorPickerUI.innerHTML = '<p>Выберите цвет</p>';
-		colorOptions.forEach(opt => {
+		colorPickerUI.innerHTML = '<p>Выберите цвет</p>';		colorOptions.forEach(opt => {
 			const btn = document.createElement('div');
 			btn.style.backgroundColor = '#' + opt.hex.toString(16).padStart(6, '0');
 			btn.onclick = () => {
@@ -279,7 +311,7 @@ function initGame(loadState = null) {
 	let isConfirming = false;
 	let holdTimer = null;
 	let lastHoldTarget = null;
-	let holdStartPos = null; // ← НОВАЯ ПЕРЕМЕННАЯ
+	let holdStartPos = null;
 
 	if (loadState) {
 		cubeUI.style.display = loadState.cubeUIVisible ? 'block' : 'none';
@@ -292,7 +324,8 @@ function initGame(loadState = null) {
 		confirmYes.textContent = yesText;
 		confirmNo.textContent = noText;
 		confirmYes.onclick = () => { onYes(); confirmBox.style.display = 'none'; isConfirming = false; };
-		confirmNo.onclick = () => { onNo(); confirmBox.style.display = 'none'; isConfirming = false; };		confirmBox.style.display = 'block';
+		confirmNo.onclick = () => { onNo(); confirmBox.style.display = 'none'; isConfirming = false; };
+		confirmBox.style.display = 'block';
 		isConfirming = true;
 	}
 
@@ -308,8 +341,7 @@ function initGame(loadState = null) {
 		});
 		element.addEventListener('pointerup', cancel);
 		element.addEventListener('pointerleave', cancel);
-		element.addEventListener('pointercancel', cancel);
-	}
+		element.addEventListener('pointercancel', cancel);	}
 
 	setupHoldOnUI(cubeUI, interactiveCube, (obj) => {
 		showConfirm('Выложить куб?', 'Да', 'Нет', () => {
@@ -339,9 +371,32 @@ function initGame(loadState = null) {
 
 		if (canSeeCube) {
 			showConfirm('Полить куб или выложить лейку?', 'Полить', 'Выложить', () => {
-				interactiveCube.material.color.set(0x8B4513);
 				interactiveCube.userData.wet = true;
-				confirmBox.style.display = 'none';				isConfirming = false;
+				interactiveCube.userData.dryStage = 0;
+				interactiveCube.material.color.set(DRYING_COLORS[0]);
+				if (interactiveCube.userData.dryTimer) clearTimeout(interactiveCube.userData.dryTimer);
+				interactiveCube.userData.dryTimer = setTimeout(() => {
+					let stage = 1;
+					const advance = () => {
+						if (stage >= DRYING_COLORS.length) {
+							interactiveCube.userData.wet = false;
+							interactiveCube.userData.dryStage = 3;
+							return;
+						}
+						interactiveCube.userData.dryStage = stage;
+						interactiveCube.material.color.set(DRYING_COLORS[stage]);
+						if (stage < DRYING_COLORS.length - 1) {
+							interactiveCube.userData.dryTimer = setTimeout(() => {
+								stage++;
+								advance();
+							}, 10000);
+						} else {							interactiveCube.userData.wet = false;
+						}
+					};
+					advance();
+				}, 10000);
+				confirmBox.style.display = 'none';
+				isConfirming = false;
 			}, () => {
 				const offset = new THREE.Vector3(0, 0, -2).applyQuaternion(camera.quaternion);
 				let dropPos = camera.position.clone().add(offset);
@@ -384,18 +439,16 @@ function initGame(loadState = null) {
 		holdTimer = setTimeout(() => {
 			action();
 			holdTimer = null;
-			lastHoldTarget = null;
-			holdStartPos = null;
+			lastHoldTarget = null;			holdStartPos = null;
 		}, HOLD_THRESHOLD_MS);
 	}
 
 	function cancelHold(e) {
-		if (holdTimer && e) {			// Проверяем, насколько далеко ушёл палец
+		if (holdTimer && e) {
 			const dx = e.clientX - holdStartPos.x;
 			const dy = e.clientY - holdStartPos.y;
 			const distance = Math.sqrt(dx * dx + dy * dy);
 			if (distance <= 10) {
-				// Движение в пределах допуска — НЕ отменяем
 				return;
 			}
 		}
@@ -407,44 +460,35 @@ function initGame(loadState = null) {
 
 	function handleRaycastInteraction(e) {
 		if (!isGameActive || isConfirming || isColorPickerOpen) return;
-
-		// Сохраняем стартовую позицию касания
 		holdStartPos = { x: e.clientX, y: e.clientY };
-
 		const raycaster = new THREE.Raycaster();
-		const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion); // ← надёжнее, чем getWorldDirection
+		const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
 		raycaster.set(camera.position, direction);
-
 		const maxDist = 5;
 		const intersects = [];
 		const ic = raycaster.intersectObject(interactiveCube);
 		const wc = raycaster.intersectObject(wateringCan);
 		const sp = raycaster.intersectObject(switchPlate);
 		const ct = raycaster.intersectObject(colorTile);
-
 		if (ic.length && ic[0].distance <= maxDist) intersects.push({ obj: interactiveCube, dist: ic[0].distance });
 		if (wc.length && wc[0].distance <= maxDist) intersects.push({ obj: wateringCan, dist: wc[0].distance });
 		if (sp.length && sp[0].distance <= maxDist) intersects.push({ obj: switchPlate, dist: sp[0].distance });
 		if (ct.length && ct[0].distance <= maxDist) intersects.push({ obj: colorTile, dist: ct[0].distance });
-
 		if (intersects.length === 0) {
 			cancelHold(e);
 			return;
 		}
-
 		intersects.sort((a, b) => a.dist - b.dist);
 		const closest = intersects[0].obj;
-
 		if (lastHoldTarget !== closest) {
 			cancelHold(e);
 		}
-
-		if (closest === colorTile) {			buildColorPickerUI();
+		if (closest === colorTile) {
+			buildColorPickerUI();
 		} else if (closest === switchPlate) {
 			isLampOn = !isLampOn;
 			spotLight.intensity = isLampOn ? 9.5 : 0;
-		} else if (closest === interactiveCube && heldObject !== interactiveCube && heldObject === null) {
-			startHold(closest, () => {
+		} else if (closest === interactiveCube && heldObject !== interactiveCube && heldObject === null) {			startHold(closest, () => {
 				heldObject = interactiveCube;
 				cubeUI.style.display = 'block';
 				interactiveCube.visible = false;
@@ -460,7 +504,6 @@ function initGame(loadState = null) {
 		}
 	}
 
-	// 🔥 СЛУШАЕМ СОБЫТИЯ НА CANVAS, А НЕ НА WINDOW
 	const canvas = renderer.domElement;
 	canvas.addEventListener('pointerdown', handleRaycastInteraction);
 	canvas.addEventListener('pointermove', cancelHold);
@@ -494,8 +537,7 @@ function initGame(loadState = null) {
 		for (let touch of e.changedTouches) {
 			const x = touch.clientX, y = touch.clientY;
 			if (x >= joyRect.left && x <= joyRect.right && y >= joyRect.top && y <= joyRect.bottom) {
-				if (joyTouchId === null) {
-					joyTouchId = touch.identifier;
+				if (joyTouchId === null) {					joyTouchId = touch.identifier;
 					joyStart = { x, y };
 					joyEl.style.borderColor = 'lime';
 				}
@@ -544,8 +586,7 @@ function initGame(loadState = null) {
 				stickEl.style.transform = 'translate(0,0)';
 				joyEl.style.borderColor = 'white';
 			}
-			if (touch.identifier === swipeTouchId) swipeTouchId = null;
-		}
+			if (touch.identifier === swipeTouchId) swipeTouchId = null;		}
 	});
 
 	window.addEventListener('touchcancel', () => {
@@ -578,7 +619,6 @@ function initGame(loadState = null) {
 			moveForward = -joyDir.y;
 			moveRight = joyDir.x;
 		}
-
 		const inputStrength = Math.hypot(moveForward, moveRight);
 		if (inputStrength > 0) {
 			moveForward /= inputStrength;
@@ -586,7 +626,8 @@ function initGame(loadState = null) {
 			const responsiveness = 0.4;
 			const speed = BASE_MOVE_SPEED * Math.pow(inputStrength, responsiveness) * delta;
 			const dir = new THREE.Vector3(-Math.sin(lookX), 0, -Math.cos(lookX)).normalize();
-			const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();			camera.position.x += (dir.x * moveForward + right.x * moveRight) * speed;
+			const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+			camera.position.x += (dir.x * moveForward + right.x * moveRight) * speed;
 			camera.position.z += (dir.z * moveForward + right.z * moveRight) * speed;
 		}
 		camera.position.y = PLAYER_HEIGHT;
@@ -594,17 +635,14 @@ function initGame(loadState = null) {
 		const halfZ = WORLD_SIZE_Z / 2 - WALL_MARGIN;
 		camera.position.x = Math.max(-halfX, Math.min(halfX, camera.position.x));
 		camera.position.z = Math.max(-halfZ, Math.min(halfZ, camera.position.z));
-		camera.rotation.order = 'YXZ';
-		camera.rotation.y = lookX;
+		camera.rotation.order = 'YXZ';		camera.rotation.y = lookX;
 		camera.rotation.x = lookY;
-
 		if (heldObject) {
 			const offset = new THREE.Vector3(0, -0.3, -1.2).applyQuaternion(camera.quaternion);
 			heldObject.position.copy(camera.position).add(offset);
 			heldObject.quaternion.copy(camera.quaternion);
 			heldObject.rotateY(Math.PI);
 		}
-
 		if (interactiveCube.visible) interactiveCube.position.y = cubeSize / 2;
 		if (wateringCan.visible) wateringCan.position.y = 0.5;
 	}
@@ -647,7 +685,6 @@ playBtn.onclick = () => {
 	isGameActive = true;
 	initGame(null);
 };
-
 continueBtn.onclick = () => {
 	if (localStorage.getItem('savedGameState')) {
 		const saved = JSON.parse(localStorage.getItem('savedGameState'));
@@ -684,7 +721,8 @@ saveAndExitBtn.onclick = () => {
 	gameInitialized = false;
 	cubeUI.style.display = 'none';
 	wateringCanUI.style.display = 'none';
-	colorPickerUI.style.display = 'none';	confirmBox.style.display = 'none';
+	colorPickerUI.style.display = 'none';
+	confirmBox.style.display = 'none';
 };
 
 backToMenuBtn.onclick = () => {
@@ -695,8 +733,7 @@ backToMenuBtn.onclick = () => {
 	pauseBtn.style.display = 'none';
 	isGameActive = false;
 	document.querySelector('canvas')?.remove();
-	gameInitialized = false;
-	cubeUI.style.display = 'none';
+	gameInitialized = false;	cubeUI.style.display = 'none';
 	wateringCanUI.style.display = 'none';
 	colorPickerUI.style.display = 'none';
 	confirmBox.style.display = 'none';
