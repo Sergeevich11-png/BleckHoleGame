@@ -1,80 +1,53 @@
-export function setupMainMenu(initGame) {
-  const playBtn = document.getElementById('playBtn');
-  const continueBtn = document.getElementById('continueBtn');
-  const exitBtn = document.getElementById('exitBtn');
+import { getState, setCoins, showCubeUI, showWateringCanUI, showSeedUI } from './gameState.js';
 
-  playBtn.onclick = () => {
-    document.getElementById('mainMenu').style.display = 'none';
-    document.getElementById('pauseBtn').style.display = 'block';
-    document.getElementById('shopBtn').style.display = 'block';
-    window.setIsGameActive(true);
-    initGame(null);
-  };
+const coinCountEl = document.getElementById('coinCount');
+const cubeUI = document.getElementById('cubeUI');
+const wateringCanUI = document.getElementById('wateringCanUI');
+const seedUI = document.getElementById('seedUI');
+const confirmBox = document.getElementById('confirmBox');
+const confirmText = document.getElementById('confirmText');
+const confirmYes = document.getElementById('confirmYes');
+const confirmNo = document.getElementById('confirmNo');
+const colorPickerUI = document.getElementById('colorPickerUI');
 
-  continueBtn.onclick = () => {
-    const saved = localStorage.getItem('savedGameState');
-    if (saved) {
-      document.getElementById('mainMenu').style.display = 'none';
-      document.getElementById('pauseBtn').style.display = 'block';
-      document.getElementById('shopBtn').style.display = 'block';
-      window.setIsGameActive(true);
-      initGame(JSON.parse(saved));
-    }
-  };
+let isConfirming = false;
 
-  exitBtn.onclick = () => {
-    if (confirm('Выйти?')) location.reload();
-  };
+export function updateCoinDisplay() {
+  coinCountEl.textContent = getState().coins;
 }
 
-export function setupPauseMenu() {
-  const pauseBtn = document.getElementById('pauseBtn');
-  const pauseMenu = document.getElementById('pauseMenu');
-  const resumeBtn = document.getElementById('resumeBtn');
-  const saveAndExitBtn = document.getElementById('saveAndExitBtn');
-  const backToMenuBtn = document.getElementById('backToMenuBtn');
-
-  pauseBtn.onclick = () => {
-    window.setIsGameActive(false);
-    pauseMenu.style.display = 'flex';
-  };
-
-  resumeBtn.onclick = () => {
-    pauseMenu.style.display = 'none';
-    window.setIsGameActive(true);
-  };
-
-  saveAndExitBtn.onclick = () => {
-    if (window.gameInitialized && window.currentGameState) {
-      const state = window.currentGameState();
-      localStorage.setItem('savedGameState', JSON.stringify(state));
-      document.getElementById('continueBtn').style.display = 'block';
-    }
-    cleanupGame();
-    document.getElementById('mainMenu').style.display = 'block';
-  };
-
-  backToMenuBtn.onclick = () => {
-    localStorage.removeItem('savedGameState');
-    document.getElementById('continueBtn').style.display = 'none';
-    cleanupGame();
-    document.getElementById('mainMenu').style.display = 'block';
-  };
+export function setupUIVisibility() {
+  cubeUI.style.display = getState().cubeUIVisible ? 'block' : 'none';
+  wateringCanUI.style.display = getState().wateringCanUIVisible ? 'block' : 'none';
+  seedUI.style.display = getState().seedUIVisible ? 'block' : 'none';
 }
 
-function cleanupGame() {
-  document.getElementById('pauseMenu').style.display = 'none';
-  document.getElementById('mainMenu').style.display = 'block';
-  document.getElementById('pauseBtn').style.display = 'none';
-  document.getElementById('shopBtn').style.display = 'none';
-  window.setIsGameActive(false);
-  document.querySelector('canvas')?.remove();
-  window.setGameInitialized(false);
-  ['cubeUI', 'wateringCanUI', 'seedUI', 'colorPickerUI', 'confirmBox', 'shopMenu'].forEach(id =>
-    document.getElementById(id).style.display = 'none'
-  );
+export function showConfirm(text, yesText, noText, onYes, onNo) {
+  if (isConfirming) return;
+  confirmText.textContent = text;
+  confirmYes.textContent = yesText;
+  confirmNo.textContent = noText;
+  confirmYes.onclick = () => {
+    onYes(); confirmBox.style.display = 'none'; isConfirming = false;
+  };
+  confirmNo.onclick = () => {
+    onNo(); confirmBox.style.display = 'none'; isConfirming = false;
+  };
+  confirmBox.style.display = 'block';
+  isConfirming = true;
 }
 
-export function setupShopButtons() {
-  // Ничего не делаем здесь — всё уже в game.js
+export function buildColorPickerUI(onSelect) {
+  colorPickerUI.innerHTML = '<p>Выберите цвет</p>';
+  import { COLOR_OPTIONS } from './constants.js';
+  COLOR_OPTIONS.forEach(opt => {
+    const btn = document.createElement('div');
+    btn.style.backgroundColor = '#' + opt.hex.toString(16).padStart(6, '0');
+    btn.onclick = () => {
+      onSelect(opt);
+      colorPickerUI.style.display = 'none';
+    };
+    colorPickerUI.appendChild(btn);
+  });
+  colorPickerUI.style.display = 'block';
 }
