@@ -6,11 +6,11 @@ import { renderShopBuy, renderShopSell } from './shop.js';
 import { saveGameState, loadGameState } from './saveLoad.js';
 import {
   getState, setCoins, setHeldObject, addClone, removeClone,
-  showCubeUI, showWateringCanUI, showSeedUI, isHoldingCube, isHoldingSeed, isHoldingWateringCan
+  showCubeUI, showWateringCanUI, showSeedUI
 } from './gameState.js';
-import { WORLD_SIZE, WALL_MARGIN, PLAYER_HEIGHT, START_POS, BASE_MOVE_SPEED, LOOK_SENSITIVITY } from './constants.js';
+import { WORLD_SIZE_X, WORLD_SIZE_Y, WORLD_SIZE_Z, PLAYER_HEIGHT, WALL_MARGIN, BASE_MOVE_SPEED, LOOK_SENSITIVITY, HOLD_THRESHOLD_MS } from './constants.js';
 
-// DOM
+// DOM элементы
 const mainMenu = document.getElementById('mainMenu');
 const continueBtn = document.getElementById('continueBtn');
 const playBtn = document.getElementById('playBtn');
@@ -35,36 +35,49 @@ let joyDir = { x: 0, y: 0 };
 let keys = { w: false, a: false, s: false, d: false };
 let isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
 
-// Инициализация
+// Инициализация игры
 function initGame(loadState = null) {
   if (gameInitialized) return;
+
   const { scene, camera, renderer, objects } = createScene(loadState);
   currentScene = { scene, camera, renderer, objects };
-  lookX = camera.rotation.y;
-  lookY = camera.rotation.x;
 
-  // восстановление состояния
+  // Восстановление состояния
   if (loadState) {
     setCoins(loadState.coins);
-    showCubeUI(loadState.cubeUIVisible);
-    showWateringCanUI(loadState.wateringCanUIVisible);    showSeedUI(loadState.seedUIVisible);
-    const heldId = loadGameState(loadState, scene, camera, objects.spotLight, objects.bulb, objects.wateringCan, objects.originalCube, objects.originalSeed, getState().clones);
-    if (heldId === 'wateringCan') setHeldObject(objects.wateringCan);
-    else if (heldId) {
+    const heldId = loadGameState(
+      loadState,      scene,
+      camera,
+      objects.spotLight,
+      objects.bulb,
+      objects.wateringCan,
+      objects.originalCube,
+      objects.originalSeed,
+      getState().clones
+    );
+    if (heldId === 'wateringCan') {
+      setHeldObject(objects.wateringCan);
+      showWateringCanUI(true);
+    } else if (heldId) {
       getState().clones.forEach(clone => {
-        if (clone.userData.cloneId === heldId) setHeldObject(clone);
+        if (clone.userData.cloneId === heldId) {
+          setHeldObject(clone);
+          if (clone.userData.type === 'cube') showCubeUI(true);
+          else if (clone.userData.type === 'seed') showSeedUI(true);
+        }
       });
     }
   } else {
     setCoins(100);
   }
+
   updateCoinDisplay();
   setupUIVisibility();
 
-  // управление
+  // Подключение ввода
   setupInput(camera, scene, objects, handleInteraction);
 
-  // кнопки магазина
+  // Магазин
   shopBuyBtn.onclick = () => renderShopBuy(scene, camera, objects.originalCube, objects.originalSeed, dropHeldObject, addClone);
   shopSellBtn.onclick = () => renderShopSell(sellHeldObject);
   shopCloseBtn.onclick = () => { shopMenu.style.display = 'none'; isGameActive = true; };
@@ -74,16 +87,15 @@ function initGame(loadState = null) {
     renderShopBuy(scene, camera, objects.originalCube, objects.originalSeed, dropHeldObject, addClone);
   };
 
-  // анимация
+  // Анимация
   animate(0);
-
   gameInitialized = true;
 }
 
+// Обработка взаимодействий из input.js
 function handleInteraction(action, target) {
   if (action === 'lamp') {
-    objects.spotLight.intensity = getState().isLampOn ? 9.5 : 0;
-  } else if (action === 'colorPicker') {
+    currentScene.objects.spotLight.intensity = getState().isLampOn ? 9.5 : 0;  } else if (action === 'colorPicker') {
     buildColorPickerUI((opt) => {
       currentScene.objects.spotLight.color.set(opt.light);
       currentScene.objects.bulb.material.color.set(opt.hex);
@@ -96,23 +108,27 @@ function handleInteraction(action, target) {
       showCubeUI(true);
     } else if (target.userData.type === 'seed') {
       showSeedUI(true);
-    }    setupUIVisibility();
+    }
+    setupUIVisibility();
   }
 }
 
+// Выложить предмет
 function dropHeldObject() {
   const held = getState().heldObject;
-  if (!held) return;
+  if (!held || !currentScene) return;
+
   const offset = new THREE.Vector3(0, 0, -2).applyQuaternion(currentScene.camera.quaternion);
   let dropPos = currentScene.camera.position.clone().add(offset);
   dropPos.y = held === currentScene.objects.wateringCan ? 0.5 :
               held.userData.type === 'cube' ? 1.5 / 2 : 0.5;
   dropPos.x = Math.round(dropPos.x);
   dropPos.z = Math.round(dropPos.z);
-  const halfX = WORLD_SIZE.X / 2 - WALL_MARGIN;
-  const halfZ = WORLD_SIZE.Z / 2 - WALL_MARGIN;
+  const halfX = WORLD_SIZE_X / 2 - WALL_MARGIN;
+  const halfZ = WORLD_SIZE_Z / 2 - WALL_MARGIN;
   dropPos.x = Math.max(-halfX, Math.min(halfX, dropPos.x));
   dropPos.z = Math.max(-halfZ, Math.min(halfZ, dropPos.z));
+
   held.position.copy(dropPos);
   held.visible = true;
   setHeldObject(null);
@@ -122,17 +138,17 @@ function dropHeldObject() {
   setupUIVisibility();
 }
 
+// Продать предмет
 function sellHeldObject(held) {
   currentScene.scene.remove(held);
   removeClone(held);
   setHeldObject(null);
   showCubeUI(false);
-  showWateringCanUI(false);
-  showSeedUI(false);
+  showWateringCanUI(false);  showSeedUI(false);
   setupUIVisibility();
 }
 
-// обновление игрока
+// Обновление игрока
 function updatePlayer(delta) {
   let moveForward = 0, moveRight = 0;
   if (!isMobile) {
@@ -145,7 +161,8 @@ function updatePlayer(delta) {
     moveRight = joyDir.x;
   }
 
-  const inputStrength = Math.hypot(moveForward, moveRight);  if (inputStrength > 0) {
+  const inputStrength = Math.hypot(moveForward, moveRight);
+  if (inputStrength > 0) {
     moveForward /= inputStrength;
     moveRight /= inputStrength;
     const responsiveness = 0.4;
@@ -157,8 +174,8 @@ function updatePlayer(delta) {
   }
 
   currentScene.camera.position.y = PLAYER_HEIGHT;
-  const halfX = WORLD_SIZE.X / 2 - WALL_MARGIN;
-  const halfZ = WORLD_SIZE.Z / 2 - WALL_MARGIN;
+  const halfX = WORLD_SIZE_X / 2 - WALL_MARGIN;
+  const halfZ = WORLD_SIZE_Z / 2 - WALL_MARGIN;
   currentScene.camera.position.x = Math.max(-halfX, Math.min(halfX, currentScene.camera.position.x));
   currentScene.camera.position.z = Math.max(-halfZ, Math.min(halfZ, currentScene.camera.position.z));
   currentScene.camera.rotation.order = 'YXZ';
@@ -176,13 +193,12 @@ function updatePlayer(delta) {
     if (clone.visible && clone.userData.type === 'cube') clone.position.y = 1.5 / 2;
     else if (clone.visible && clone.userData.type === 'seed') clone.position.y = 0.5;
   });
-  if (currentScene.objects.wateringCan.visible) currentScene.objects.wateringCan.position.y = 0.5;
-}
+  if (currentScene.objects.wateringCan.visible) currentScene.objects.wateringCan.position.y = 0.5;}
 
-// анимация
+// Анимационный цикл
 let lastTime = 0;
 function animate(time) {
-  if (!isGameActive) return requestAnimationFrame(animate);
+  if (!isGameActive || !currentScene) return requestAnimationFrame(animate);
   const delta = time - lastTime;
   lastTime = time;
   updatePlayer(delta);
@@ -194,16 +210,14 @@ function animate(time) {
 LOOK: Yaw=${degX}°, Pitch=${degY}°
 MOBILE: ${isMobile ? 'Да' : 'Нет'} | FPS: ${Math.round(1000/delta)}`;
   currentScene.renderer.render(currentScene.scene, currentScene.camera);
-  requestAnimationFrame(animate);}
+  requestAnimationFrame(animate);
+}
 
-// события
+// Управление клавиатурой
 window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = ['w','a','s','d'].includes(e.key.toLowerCase()); });
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
-// мобильное управление (упрощённо — можно расширить)
-if (isMobile) document.getElementById('joystick').style.display = 'block';
-
-// основные кнопки
+// Основные кнопки
 playBtn.onclick = () => {
   mainMenu.style.display = 'none';
   pauseBtn.style.display = 'block';
@@ -211,6 +225,7 @@ playBtn.onclick = () => {
   isGameActive = true;
   initGame(null);
 };
+
 continueBtn.onclick = () => {
   const saved = localStorage.getItem('savedGameState');
   if (saved) {
@@ -221,13 +236,13 @@ continueBtn.onclick = () => {
     initGame(JSON.parse(saved));
   }
 };
+
 exitBtn.onclick = () => { if (confirm('Выйти?')) location.reload(); };
 pauseBtn.onclick = () => { isGameActive = false; pauseMenu.style.display = 'flex'; };
 resumeBtn.onclick = () => { pauseMenu.style.display = 'none'; isGameActive = true; };
 
 saveAndExitBtn.onclick = () => {
-  if (gameInitialized && currentScene) {
-    const state = saveGameState(
+  if (gameInitialized && currentScene) {    const state = saveGameState(
       currentScene.scene,
       currentScene.camera,
       currentScene.objects.spotLight,
@@ -242,8 +257,10 @@ saveAndExitBtn.onclick = () => {
   }
   cleanup();
 };
+
 backToMenuBtn.onclick = () => {
-  localStorage.removeItem('savedGameState');  continueBtn.style.display = 'none';
+  localStorage.removeItem('savedGameState');
+  continueBtn.style.display = 'none';
   cleanup();
 };
 
@@ -259,12 +276,14 @@ function cleanup() {
     .forEach(el => el.style.display = 'none');
 }
 
-// проверка сохранения
+// Проверка сохранения при старте
 if (localStorage.getItem('savedGameState')) {
   continueBtn.style.display = 'block';
+} else {
+  continueBtn.style.display = 'none';
 }
 
-// resize
+// Resize
 window.addEventListener('resize', () => {
   if (currentScene) {
     currentScene.camera.aspect = window.innerWidth / window.innerHeight;
