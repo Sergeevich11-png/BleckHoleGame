@@ -1,5 +1,9 @@
 const DRYING_COLORS = [0x8B4513, 0xA16B3F, 0xB8855A, 0xff9800];
 
+export function generateCloneId() {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+}
+
 export function saveGameState(scene, camera, spotLight, bulb, wateringCan, originalCube, originalSeed, isLampOn, heldObject, cubeUIVisible, wateringCanUIVisible, seedUIVisible, playerCoins, clones) {
   const cloneData = [];
   clones.forEach(clone => {
@@ -43,11 +47,11 @@ export function saveGameState(scene, camera, spotLight, bulb, wateringCan, origi
     clones: cloneData,
     heldObjectId,
     cubeUIVisible,
-    wateringCanUIVisible,
-    seedUIVisible,
+    wateringCanUIVisible,    seedUIVisible,
     coins: playerCoins
   };
 }
+
 export function loadGameState(gameState, scene, camera, spotLight, bulb, wateringCan, originalCube, originalSeed, clones) {
   camera.position.copy(gameState.cameraPosition);
   camera.rotation.set(gameState.cameraRotation.x, gameState.cameraRotation.y, gameState.cameraRotation.z);
@@ -56,8 +60,6 @@ export function loadGameState(gameState, scene, camera, spotLight, bulb, waterin
   bulb.material.color.setHex(gameState.bulbColor);
   wateringCan.position.copy(gameState.wateringCan.position);
   wateringCan.visible = gameState.wateringCan.visible;
-
-  let heldObject = null;
 
   gameState.clones.forEach(data => {
     let clone;
@@ -75,6 +77,28 @@ export function loadGameState(gameState, scene, camera, spotLight, bulb, waterin
       clone.material.color.setHex(data.color);
       scene.add(clone);
       clones.add(clone);
+      if (data.wet && data.dryStage < 3) {
+        setTimeout(() => {
+          let stage = data.dryStage + 1;
+          const advance = () => {
+            if (stage >= DRYING_COLORS.length) {
+              clone.userData.wet = false;
+              clone.userData.dryStage = 3;
+              return;
+            }
+            clone.userData.dryStage = stage;
+            clone.material.color.set(DRYING_COLORS[stage]);
+            if (stage < DRYING_COLORS.length - 1) {
+              clone.userData.dryTimer = setTimeout(() => {
+                stage++;
+                advance();
+              }, 10000);
+            } else {
+              clone.userData.wet = false;
+            }
+          };          advance();
+        }, 100);
+      }
     } else if (data.type === 'seed') {
       clone = originalSeed.clone();
       clone.material = originalSeed.material.clone();
@@ -89,22 +113,15 @@ export function loadGameState(gameState, scene, camera, spotLight, bulb, waterin
     }
   });
 
-  document.getElementById('cubeUI').style.display = gameState.cubeUIVisible ? 'block' : 'none';
-  document.getElementById('wateringCanUI').style.display = gameState.wateringCanUIVisible ? 'block' : 'none';
-  document.getElementById('seedUI').style.display = gameState.seedUIVisible ? 'block' : 'none';
-
+  let heldObject = null;
   if (gameState.heldObjectId === 'wateringCan') {
     heldObject = wateringCan;
   } else if (gameState.heldObjectId) {
-    clones.forEach(clone => {      if (clone.userData.cloneId === gameState.heldObjectId) {
+    clones.forEach(clone => {
+      if (clone.userData.cloneId === gameState.heldObjectId) {
         heldObject = clone;
       }
     });
   }
-
   return heldObject;
-}
-
-export function loadSavedState() {
-  return localStorage.getItem('savedGameState') ? JSON.parse(localStorage.getItem('savedGameState')) : null;
 }
